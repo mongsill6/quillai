@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://quickcv.ai/</loc><priority>1.0</priority></url>
-  <url><loc>https://quickcv.ai/resume-bullets</loc><priority>0.9</priority></url>
-  <url><loc>https://quickcv.ai/cover-letter</loc><priority>0.9</priority></url>
-  <url><loc>https://quickcv.ai/interview-prep</loc><priority>0.9</priority></url>
-  <url><loc>https://quickcv.ai/linkedin-optimizer</loc><priority>0.9</priority></url>
+  <url><loc>https://nameforge.ai/</loc><priority>1.0</priority></url>
+  <url><loc>https://nameforge.ai/restaurant-name-generator</loc><priority>0.8</priority></url>
+  <url><loc>https://nameforge.ai/tech-startup-name-generator</loc><priority>0.8</priority></url>
+  <url><loc>https://nameforge.ai/bakery-name-generator</loc><priority>0.8</priority></url>
+  <url><loc>https://nameforge.ai/clothing-brand-name-generator</loc><priority>0.8</priority></url>
+  <url><loc>https://nameforge.ai/podcast-name-generator</loc><priority>0.8</priority></url>
+  <url><loc>https://nameforge.ai/youtube-channel-name-generator</loc><priority>0.8</priority></url>
 </urlset>

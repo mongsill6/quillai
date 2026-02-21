@@ -1,122 +1,32 @@
 /**
- * QuickCV AI — Cloudflare Worker API
- * Career tools powered by OpenAI gpt-4o-mini
+ * NameForge AI — Cloudflare Worker
+ * AI name generation + domain availability check
  */
 
 interface Env {
   OPENAI_API_KEY: string
 }
 
-interface RequestBody {
-  tool: 'resume-bullets' | 'cover-letter' | 'interview-prep' | 'linkedin'
-  input: string
-  options?: Record<string, string>
+interface GenerateBody {
+  query: string
+  style: string
 }
 
-const SYSTEM_PROMPTS: Record<string, (input: string, options?: Record<string, string>) => string> = {
-  'resume-bullets': (_input, options) => {
-    const styleGuide: Record<string, string> = {
-      achievement: 'Focus on measurable achievements using the XYZ formula: "Accomplished [X] as measured by [Y], by doing [Z]". Use strong action verbs. Include metrics, percentages, and dollar amounts where possible.',
-      technical: 'Emphasize technical skills, tools, and systems. Include specific technologies, architectures, and technical achievements.',
-      leadership: 'Highlight leadership, team management, mentorship, and cross-functional collaboration. Emphasize people management and strategic decisions.',
-      creative: 'Focus on creative campaigns, content strategy, brand impact, and audience growth. Include engagement metrics and creative achievements.',
-    }
-    const style = styleGuide[options?.style || 'achievement'] || styleGuide.achievement
-    const jobTitle = options?.jobTitle ? `The person's role is: ${options.jobTitle}. ` : ''
-    return `You are an expert resume writer and career coach. ${jobTitle}Generate 6-8 powerful resume bullet points from the user's description of their experience. ${style}
-
-Rules:
-- Start each bullet with a strong past-tense action verb (Led, Built, Increased, Reduced, etc.)
-- Each bullet should be 1-2 lines maximum
-- Be specific and quantify results whenever possible
-- Optimize for ATS (Applicant Tracking Systems)
-- Format as a bullet list using "•" character
-- Output ONLY the bullet points, nothing else`
-  },
-
-  'cover-letter': (_input, options) => {
-    const toneGuide: Record<string, string> = {
-      professional: 'Maintain a professional, polished tone.',
-      enthusiastic: 'Show genuine enthusiasm and passion for the role.',
-      confident: 'Use confident, direct language that demonstrates authority.',
-      conversational: 'Keep it warm and personable while remaining professional.',
-    }
-    const tone = toneGuide[options?.tone || 'professional'] || toneGuide.professional
-    const company = options?.company ? `The company is ${options.company}. ` : ''
-    const jobTitle = options?.jobTitle ? `The position is ${options.jobTitle}. ` : ''
-    return `You are an expert cover letter writer. ${company}${jobTitle}Generate a compelling, tailored cover letter based on the user's background. ${tone}
-
-Rules:
-- 3-4 paragraphs maximum (250-350 words)
-- Opening: Hook that shows genuine interest and knowledge of the company
-- Body: Connect the candidate's specific experience to the role's requirements
-- Closing: Strong call to action
-- Do NOT use generic phrases like "I am writing to express my interest"
-- Make it specific and personal, not template-like
-- Output the cover letter ready to copy-paste, starting with "Dear Hiring Manager,"`
-  },
-
-  'interview-prep': (_input, options) => {
-    const typeGuide: Record<string, string> = {
-      mixed: 'Generate a mix of behavioral (STAR method), technical, and situational questions.',
-      behavioral: 'Focus on behavioral questions using the STAR method (Situation, Task, Action, Result).',
-      technical: 'Focus on technical and domain-specific knowledge questions.',
-      situational: 'Focus on hypothetical situational and case study questions.',
-    }
-    const qType = typeGuide[options?.questionType || 'mixed'] || typeGuide.mixed
-    const jobTitle = options?.jobTitle ? `The role is: ${options.jobTitle}. ` : ''
-    return `You are an expert interview coach and career advisor. ${jobTitle}${qType}
-
-Generate 5 realistic interview questions with detailed sample answers for the specified role.
-
-Format each as:
-**Q1: [Question]**
-**Sample Answer:** [A detailed, structured sample answer of 3-5 sentences]
-
----
-
-Rules:
-- Questions should be realistic — the kind actually asked at top companies
-- Sample answers should use the STAR method for behavioral questions
-- Include specific examples and metrics in sample answers
-- Make answers feel authentic, not rehearsed
-- Output ONLY the questions and answers`
-  },
-
-  'linkedin': (_input, options) => {
-    const sectionGuide: Record<string, string> = {
-      all: 'Generate: 1) A compelling headline (under 120 chars), 2) An "About" section (200-300 words), and 3) A brief experience summary. Format with clear section headers.',
-      headline: 'Generate 3 compelling LinkedIn headline options, each under 120 characters. Use the format: [Role] | [Key Value] | [Specialty]. Output all 3 with numbers.',
-      about: 'Generate a compelling LinkedIn "About" section (200-300 words). Start with a hook, highlight key achievements, and end with what you\'re looking for.',
-      summary: 'Generate a professional experience summary paragraph optimized for LinkedIn (100-150 words).',
-    }
-    const section = sectionGuide[options?.section || 'all'] || sectionGuide.all
-    const role = options?.currentRole ? `Current/target role: ${options.currentRole}. ` : ''
-    return `You are a LinkedIn optimization expert and personal branding coach. ${role}${section}
-
-Rules:
-- Use keywords that recruiters actually search for
-- Show personality — avoid corporate jargon
-- Focus on value provided, not just job duties
-- Include relevant industry keywords naturally
-- Make it scannable with short paragraphs
-- Output ONLY the requested content`
-  },
+const STYLE_GUIDE: Record<string, string> = {
+  brandable: 'Create unique, invented words or creative combinations that feel premium and brandable (like Spotify, Shopify, Figma).',
+  professional: 'Use real, established-sounding words that convey trust and authority (like Accenture, Deloitte, Meridian).',
+  playful: 'Use fun, catchy, memorable names with personality (like Bumble, Wobble, Zappy).',
+  modern: 'Create sleek, minimal, one or two-syllable names that feel modern (like Vercel, Notion, Linear).',
+  short: 'Names must be 3-6 characters maximum. Short, punchy, easy to type (like Uber, Bolt, Hive).',
 }
 
 // Rate limiting
 const rateMap = new Map<string, { count: number; reset: number }>()
-const RATE_LIMIT = 15
-const RATE_WINDOW = 60_000
-
 function checkRate(ip: string): boolean {
   const now = Date.now()
   const entry = rateMap.get(ip)
-  if (!entry || now > entry.reset) {
-    rateMap.set(ip, { count: 1, reset: now + RATE_WINDOW })
-    return true
-  }
-  if (entry.count >= RATE_LIMIT) return false
+  if (!entry || now > entry.reset) { rateMap.set(ip, { count: 1, reset: now + 60000 }); return true }
+  if (entry.count >= 10) return false
   entry.count++
   return true
 }
@@ -127,6 +37,30 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
+// Check domain availability via DNS lookup
+async function checkDomain(domain: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://dns.google/resolve?name=${domain}&type=A`, {
+      headers: { Accept: 'application/dns-json' },
+    })
+    const data = (await res.json()) as any
+    // If Status is 3 (NXDOMAIN), domain likely available
+    // If Status is 0 and has answers, domain is taken
+    if (data.Status === 3) return true
+    if (data.Status === 0 && data.Answer && data.Answer.length > 0) return false
+    // Fallback: also check NS records
+    const nsRes = await fetch(`https://dns.google/resolve?name=${domain}&type=NS`, {
+      headers: { Accept: 'application/dns-json' },
+    })
+    const nsData = (await nsRes.json()) as any
+    if (nsData.Status === 3) return true
+    if (nsData.Answer && nsData.Answer.length > 0) return false
+    return true // If no records found, probably available
+  } catch {
+    return true // Default to available on error
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
@@ -134,11 +68,9 @@ export default {
     if (url.pathname !== '/api/generate') {
       return new Response('Not Found', { status: 404 })
     }
-
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders })
     }
-
     if (request.method !== 'POST') {
       return Response.json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders })
     }
@@ -149,20 +81,14 @@ export default {
         return Response.json({ error: 'Too many requests. Please wait a moment.' }, { status: 429, headers: corsHeaders })
       }
 
-      const body = (await request.json()) as RequestBody
-
-      if (!body.tool || !body.input?.trim()) {
-        return Response.json({ error: 'Missing required fields' }, { status: 400, headers: corsHeaders })
-      }
-      if (body.input.length > 5000) {
-        return Response.json({ error: 'Input too long. Maximum 5,000 characters.' }, { status: 400, headers: corsHeaders })
+      const body = (await request.json()) as GenerateBody
+      if (!body.query?.trim()) {
+        return Response.json({ error: 'Please describe your business.' }, { status: 400, headers: corsHeaders })
       }
 
-      const systemFn = SYSTEM_PROMPTS[body.tool]
-      if (!systemFn) {
-        return Response.json({ error: 'Invalid tool' }, { status: 400, headers: corsHeaders })
-      }
+      const styleHint = STYLE_GUIDE[body.style] || STYLE_GUIDE.brandable
 
+      // Step 1: Generate names with AI
       const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -172,26 +98,58 @@ export default {
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
-            { role: 'system', content: systemFn(body.input, body.options) },
-            { role: 'user', content: body.input },
+            {
+              role: 'system',
+              content: `You are a world-class brand naming expert. Generate 8 unique business name ideas based on the user's description.
+
+${styleHint}
+
+CRITICAL RULES:
+- Each name should be 1-2 words maximum
+- Names must be easy to pronounce and spell
+- Suggest the .com domain for each name (lowercase, no spaces/hyphens)
+- Write a short tagline (under 10 words) for each
+- Output ONLY valid JSON array, no markdown, no code blocks
+
+Output format:
+[{"name":"BrandName","domain":"brandname.com","tagline":"Short catchy tagline here"}]`
+            },
+            { role: 'user', content: body.query },
           ],
-          max_tokens: 2000,
-          temperature: 0.4,
+          max_tokens: 1500,
+          temperature: 0.9,
         }),
       })
 
       if (!openaiRes.ok) {
         console.error('OpenAI error:', await openaiRes.text())
-        return Response.json({ error: 'AI service temporarily unavailable.' }, { status: 502, headers: corsHeaders })
+        return Response.json({ error: 'AI service unavailable.' }, { status: 502, headers: corsHeaders })
       }
 
-      const data = (await openaiRes.json()) as any
-      const result = data.choices?.[0]?.message?.content?.trim() || ''
-      const tokens = data.usage?.total_tokens || 0
+      const aiData = (await openaiRes.json()) as any
+      let raw = aiData.choices?.[0]?.message?.content?.trim() || '[]'
 
-      return Response.json({ result, usage: { tokens } }, { status: 200, headers: corsHeaders })
+      // Clean up potential markdown wrapping
+      raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+
+      let names: { name: string; domain: string; tagline: string }[]
+      try {
+        names = JSON.parse(raw)
+      } catch {
+        return Response.json({ error: 'Failed to parse names.' }, { status: 500, headers: corsHeaders })
+      }
+
+      // Step 2: Check domain availability in parallel
+      const results = await Promise.all(
+        names.map(async (n) => {
+          const available = await checkDomain(n.domain)
+          return { ...n, available }
+        })
+      )
+
+      return Response.json({ names: results }, { status: 200, headers: corsHeaders })
     } catch (err) {
-      console.error('Generate error:', err)
+      console.error('Error:', err)
       return Response.json({ error: 'Internal server error' }, { status: 500, headers: corsHeaders })
     }
   },

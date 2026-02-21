@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://quickcv.ai/sitemap.xml
+Sitemap: https://nameforge.ai/sitemap.xml
